@@ -1,11 +1,8 @@
 import { OpenAIEmbeddings } from "@langchain/openai";
-import { HNSWLib } from "@langchain/community/vectorstores/hnswlib";
-import { Document } from "@langchain/core/documents";
 import { ChatOpenAI } from "@langchain/openai";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { Subsidy } from "./utils";
 import subsidyData from "../data/subsidies.json";
-import path from "path";
 
 // Initialize OpenAI embeddings with the API key from environment variables
 const embeddings = new OpenAIEmbeddings({
