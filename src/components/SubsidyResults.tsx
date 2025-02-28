@@ -29,7 +29,7 @@ export function SubsidyResults({
         <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
           <h3 className="text-lg font-medium text-yellow-800">No matches found</h3>
           <p className="text-yellow-700 mt-2">
-            We couldn't find any subsidies matching your specific criteria. Try adjusting your 
+            We couldn&apos;t find any subsidies matching your specific criteria. Try adjusting your 
             search parameters or contact a subsidy expert for personalized advice.
           </p>
         </div>
