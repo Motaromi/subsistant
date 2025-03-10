@@ -5,17 +5,28 @@ import { Document } from "@langchain/core/documents";
 import { Subsidy } from "./utils";
 import subsidyData from "../data/subsidies.json";
 
+// Add safer initialization of API key
+const getOpenAIApiKey = () => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    console.warn("OPENAI_API_KEY is not set in environment variables");
+  }
+  return apiKey;
+};
+
 // Initialize OpenAI embeddings with the API key from environment variables
 const embeddings = new OpenAIEmbeddings({
-  openAIApiKey: process.env.OPENAI_API_KEY,
+  openAIApiKey: getOpenAIApiKey(),
   modelName: "text-embedding-3-small",
 });
 
 // Initialize the LLM for generating refined responses
 const llm = new ChatOpenAI({
-  openAIApiKey: process.env.OPENAI_API_KEY,
+  openAIApiKey: getOpenAIApiKey(),
   modelName: "gpt-4o",
   temperature: 0.2,
+  maxRetries: 3, // Add retries to handle temporary errors
+  timeout: 60000, // Set a longer timeout (60 seconds)
 });
 
 // Create document objects for each subsidy with appropriate metadata
@@ -89,6 +100,14 @@ interface CompanyDetails {
  */
 export const matchSubsidies = async (companyDetails: CompanyDetails): Promise<Subsidy[]> => {
   try {
+    console.log("Matching subsidies for:", JSON.stringify(companyDetails));
+
+    // Validate inputs to make sure they're not empty
+    if (!companyDetails.industry || !companyDetails.companySize || !companyDetails.stage) {
+      console.warn("Missing required company details, using fallback");
+      return fallbackMatchSubsidies(companyDetails);
+    }
+
     // Initialize vector store if not already done
     const store = await initializeVectorStore();
 
@@ -124,6 +143,7 @@ export const matchSubsidies = async (companyDetails: CompanyDetails): Promise<Su
     
     if (matchedSubsidies.length === 0) {
       // If vector search found documents but no subsidies matched, use fallback
+      console.log("Vector search returned no matches, using fallback");
       return fallbackMatchSubsidies(companyDetails);
     }
 
@@ -139,27 +159,89 @@ export const matchSubsidies = async (companyDetails: CompanyDetails): Promise<Su
  * Fallback method that directly filters subsidies without using vector search
  */
 const fallbackMatchSubsidies = (companyDetails: CompanyDetails): Subsidy[] => {
-  console.log("Using direct filtering for subsidy matching");
+  console.log("Using direct filtering for subsidy matching with criteria:", companyDetails);
   
-  return (subsidyData as Subsidy[]).filter((subsidy) => {
+  // If subsidyData is not valid, return empty array
+  if (!subsidyData || !Array.isArray(subsidyData) || subsidyData.length === 0) {
+    console.error("Subsidy data is missing or invalid");
+    return [];
+  }
+
+  console.log("Total subsidies to filter:", subsidyData.length);
+  
+  // Normalize inputs for more flexible matching
+  const normalizedIndustry = companyDetails.industry.toLowerCase().trim();
+  const normalizedSize = companyDetails.companySize.toLowerCase().trim();
+  const normalizedStage = companyDetails.stage.toLowerCase().trim();
+  
+  // Make matching more flexible
+  const industryMatchers = [normalizedIndustry, "all", "any"];
+  // Add tech industry variations
+  if (normalizedIndustry.includes("tech") || normalizedIndustry.includes("technology")) {
+    industryMatchers.push("technology", "tech", "software", "it", "information technology");
+  }
+  
+  // Add size variations
+  const sizeMatchers = [normalizedSize, "all", "any"];
+  if (normalizedSize.includes("small") || normalizedSize.includes("startup")) {
+    sizeMatchers.push("small", "startup", "small business", "sme");
+  }
+  
+  // Add stage variations
+  const stageMatchers = [normalizedStage, "all", "any"];
+  if (normalizedStage.includes("start") || normalizedStage.includes("early")) {
+    stageMatchers.push("early stage", "startup", "beginning", "initial");
+  }
+  
+  console.log("Matchers:", { industryMatchers, sizeMatchers, stageMatchers });
+  
+  const result = (subsidyData as Subsidy[]).filter((subsidy) => {
+    // Helper function to check if any element in array matches any of our matchers
+    const hasMatch = (field: string | string[], matchers: string[]) => {
+      if (!field) return false;
+      
+      if (typeof field === "string") {
+        const normalizedField = field.toLowerCase().trim();
+        return matchers.some(matcher => normalizedField.includes(matcher));
+      }
+      
+      if (Array.isArray(field)) {
+        return field.some(item => {
+          const normalizedItem = item.toLowerCase().trim();
+          return matchers.some(matcher => normalizedItem.includes(matcher));
+        });
+      }
+      
+      return false;
+    };
+    
     // Check if industry matches
-    const industryMatches = 
-      subsidy.industry === "all" || 
-      (Array.isArray(subsidy.industry) && 
-        (subsidy.industry.includes(companyDetails.industry) || subsidy.industry.includes("all")));
-
+    const industryMatches = hasMatch(subsidy.industry, industryMatchers);
+    
     // Check if company size matches
-    const sizeMatches = 
-      (Array.isArray(subsidy.companySize) && 
-        subsidy.companySize.includes(companyDetails.companySize));
-
+    const sizeMatches = hasMatch(subsidy.companySize, sizeMatchers);
+    
     // Check if stage matches
-    const stageMatches = 
-      (Array.isArray(subsidy.stage) && 
-        subsidy.stage.includes(companyDetails.stage));
-
-    return industryMatches && sizeMatches && stageMatches;
+    const stageMatches = hasMatch(subsidy.stage, stageMatchers);
+    
+    const isMatch = industryMatches && (sizeMatches || stageMatches);
+    
+    if (isMatch) {
+      console.log(`Matched subsidy: ${subsidy.name}, industry: ${subsidy.industry}, size: ${subsidy.companySize}, stage: ${subsidy.stage}`);
+    }
+    
+    return isMatch;
   });
+  
+  console.log(`Fallback matching found ${result.length} subsidies`);
+  
+  // If no results, return at least a few subsidies that might be relevant
+  if (result.length === 0) {
+    console.log("No exact matches, returning general subsidies");
+    return (subsidyData as Subsidy[]).slice(0, 3); // Return first 3 subsidies as a fallback
+  }
+  
+  return result;
 };
 
 /**
@@ -170,6 +252,19 @@ export const generateRecommendation = async (
   matchedSubsidies: Subsidy[]
 ): Promise<string> => {
   try {
+    console.log("Generating recommendation for matched subsidies:", matchedSubsidies.length);
+    
+    // Check if we have subsidies to work with
+    if (!matchedSubsidies || matchedSubsidies.length === 0) {
+      return "No matching subsidies were found for your criteria. Try adjusting your search parameters.";
+    }
+
+    // Verify API key is available
+    if (!process.env.OPENAI_API_KEY) {
+      console.error("Missing OpenAI API key");
+      return generateFallbackRecommendation(matchedSubsidies);
+    }
+
     // Create a detailed prompt for the LLM
     const prompt = `
       I'm helping a ${companyDetails.companySize} company in the ${companyDetails.industry} industry, 
@@ -196,12 +291,61 @@ export const generateRecommendation = async (
       Keep the tone professional and practical, focusing on actionable information.
     `;
 
-    // Generate the recommendation using the LLM
-    const response = await llm.invoke(prompt);
+    console.log("Calling OpenAI with prompt length:", prompt.length);
     
-    return response.content.toString();
+    // Generate the recommendation using the LLM
+    try {
+      const response = await llm.invoke(prompt);
+      console.log("Successfully received response from OpenAI");
+      return response.content.toString();
+    } catch (apiError) {
+      console.error("OpenAI API error:", apiError);
+      // If OpenAI fails, use our fallback recommendation generator
+      return generateFallbackRecommendation(matchedSubsidies);
+    }
   } catch (error) {
     console.error("Error generating recommendation:", error);
+    return generateFallbackRecommendation(matchedSubsidies);
+  }
+};
+
+/**
+ * Generate a fallback recommendation without using the OpenAI API
+ */
+const generateFallbackRecommendation = (matchedSubsidies: Subsidy[]): string => {
+  try {
+    if (!matchedSubsidies || matchedSubsidies.length === 0) {
+      return "No subsidies matched your criteria. Try adjusting your search parameters.";
+    }
+
+    // Create a simple templated recommendation
+    const recommendation = `
+# Subsidy Recommendations
+
+We've found ${matchedSubsidies.length} subsidies that match your criteria:
+
+${matchedSubsidies.map((subsidy, index) => `
+## ${index + 1}. ${subsidy.name}
+
+**Description:** ${subsidy.description}
+
+**Why it's relevant:** This subsidy is available for ${Array.isArray(subsidy.companySize) ? subsidy.companySize.join(', ') : subsidy.companySize} companies in the ${Array.isArray(subsidy.industry) ? subsidy.industry.join(', ') : subsidy.industry} industry.
+
+**Eligibility:** ${subsidy.eligibility}
+
+**Funding amount:** ${subsidy.fundingAmount || 'Not specified'}
+
+**Deadline:** ${subsidy.deadline || 'Not specified'}
+
+**Next steps:** ${subsidy.applicationProcess || 'Contact the subsidy provider for more details.'}
+`).join('\n')}
+
+We recommend reviewing each subsidy's details carefully and preparing your application materials well in advance of deadlines.
+`;
+
+    return recommendation;
+  } catch (error) {
+    console.error("Error generating fallback recommendation:", error);
     return "We encountered an issue generating your personalized recommendation. Please try again later.";
   }
 }; 
