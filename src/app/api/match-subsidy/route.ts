@@ -4,7 +4,7 @@ import subsidyData from "@/data/subsidies.json";
 import { Subsidy } from "@/lib/utils";
 
 // Set max duration for API function
-export const maxDuration = 300; // 5 minutes 
+export const maxDuration = 60; // 1 minute 
 
 // Improved route handler with better error handling and timeout management
 export async function POST(request: NextRequest) {
