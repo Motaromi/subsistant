@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { matchSubsidies, generateRecommendation } from "@/lib/rag";
 import subsidyData from "@/data/subsidies.json";
+import { Subsidy } from "@/lib/utils";
 
 // Set max duration for API function
 export const maxDuration = 300; // 5 minutes 
@@ -32,12 +33,12 @@ export async function POST(request: NextRequest) {
     });
     
     // Set a 20 second timeout
-    const timeoutPromise = new Promise((_, reject) => {
+    const timeoutPromise = new Promise<Subsidy[]>((_, reject) => {
       setTimeout(() => reject(new Error("Subsidy matching timed out")), 20000);
     });
     
     // Race between the matching and the timeout
-    let matchedSubsidies;
+    let matchedSubsidies: Subsidy[] = [];
     try {
       matchedSubsidies = await Promise.race([matchingPromise, timeoutPromise]);
     } catch (timeoutError) {
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
       // If tech startup, provide fallback results
       if (isTechStartup) {
         // Return first 3 tech related subsidies as fallback
-        matchedSubsidies = (subsidyData as any[])
+        matchedSubsidies = (subsidyData as Subsidy[])
           .filter(s => 
             (Array.isArray(s.industry) && 
              s.industry.some((i: string) => i.toLowerCase().includes("tech"))) &&
@@ -86,12 +87,12 @@ export async function POST(request: NextRequest) {
         );
         
         // Set a timeout for recommendation generation
-        const recTimeoutPromise = new Promise((_, reject) => {
+        const recTimeoutPromise = new Promise<string>((_, reject) => {
           setTimeout(() => reject(new Error("Recommendation generation timed out")), 15000);
         });
         
         // Try to generate recommendation, but don't fail if it times out
-        recommendation = await Promise.race([recPromise, recTimeoutPromise]) as string;
+        recommendation = await Promise.race([recPromise, recTimeoutPromise]);
       } catch (recError) {
         console.error("Recommendation generation failed:", recError);
         // Use default recommendation if generation fails

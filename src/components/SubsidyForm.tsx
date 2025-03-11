@@ -4,9 +4,10 @@ import { useState } from "react";
 import { 
   subsidyFormSchema, 
   SubsidyFormValues, 
-  COMPANY_SIZES, 
-  COMPANY_STAGES, 
-  INDUSTRIES 
+  industryOptions, 
+  companySizeOptions, 
+  companyStageOptions,
+  needsOptions
 } from "@/lib/schemas";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -93,7 +94,7 @@ export function SubsidyForm({ onResults, setLoading, isLoading }: SubsidyFormPro
           </label>
           <Select
             id="industry"
-            options={INDUSTRIES}
+            options={industryOptions}
             placeholder="Select your industry"
             error={errors.industry?.message}
             {...register("industry")}
@@ -109,7 +110,7 @@ export function SubsidyForm({ onResults, setLoading, isLoading }: SubsidyFormPro
           </label>
           <Select
             id="companySize"
-            options={COMPANY_SIZES}
+            options={companySizeOptions}
             placeholder="Select your company size"
             error={errors.companySize?.message}
             {...register("companySize")}
@@ -125,7 +126,7 @@ export function SubsidyForm({ onResults, setLoading, isLoading }: SubsidyFormPro
           </label>
           <Select
             id="stage"
-            options={COMPANY_STAGES}
+            options={companyStageOptions}
             placeholder="Select your development stage"
             error={errors.stage?.message}
             {...register("stage")}
