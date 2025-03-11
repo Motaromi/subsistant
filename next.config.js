@@ -1,11 +1,23 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
+    // Disable ESLint during production builds for now
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // Dangerously allow type errors in production
+    // Skip type checking during builds (not recommended long-term)
     ignoreBuildErrors: true,
+  },
+  // Configure serverless functions
+  experimental: {
+    serverComponentsExternalPackages: ["langchain", "@langchain/openai"],
+  },
+  // Set longer timeout for API routes
+  api: {
+    responseLimit: false,
+    bodyParser: {
+      sizeLimit: '4mb',
+    },
   },
 }
 

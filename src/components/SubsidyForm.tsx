@@ -3,22 +3,21 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { 
   subsidyFormSchema, 
-  SubsidyFormValues,
-  industryOptions,
-  companySizeOptions,
-  companyStageOptions,
-  needsOptions
+  SubsidyFormValues, 
+  COMPANY_SIZES, 
+  COMPANY_STAGES, 
+  INDUSTRIES 
 } from "@/lib/schemas";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Subsidy } from "@/lib/utils";
+import { toast } from "@/components/ui/use-toast";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 interface SubsidyFormProps {
-  onResults: (data: {
-    matches: Subsidy[];
-    recommendation: string;
-    matchCount: number;
-  }) => void;
+  onResults: (result: { matches: Subsidy[], recommendation: string, matchCount: number }) => void;
   setLoading: (loading: boolean) => void;
   isLoading: boolean;
 }
@@ -42,18 +41,29 @@ export function SubsidyForm({ onResults, setLoading, isLoading }: SubsidyFormPro
 
   const onSubmit = async (data: SubsidyFormValues) => {
     setLoading(true);
-    setServerError(null);
+    setServerError("");
 
     try {
+      // Set up timeout for the fetch request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
       const response = await fetch("/api/match-subsidy", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(data),
+        signal: controller.signal,
       });
 
+      // Clear timeout since the request completed
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
+        if (response.status === 504) {
+          throw new Error("Request timed out. Please try again with different criteria.");
+        }
         throw new Error(`Error: ${response.status}`);
       }
 
@@ -62,7 +72,9 @@ export function SubsidyForm({ onResults, setLoading, isLoading }: SubsidyFormPro
     } catch (error) {
       console.error("Error submitting form:", error);
       setServerError(
-        "Failed to match subsidies. Please try again later."
+        error instanceof Error 
+          ? error.message 
+          : "Failed to match subsidies. Please try again later."
       );
     } finally {
       setLoading(false);
@@ -81,7 +93,7 @@ export function SubsidyForm({ onResults, setLoading, isLoading }: SubsidyFormPro
           </label>
           <Select
             id="industry"
-            options={industryOptions}
+            options={INDUSTRIES}
             placeholder="Select your industry"
             error={errors.industry?.message}
             {...register("industry")}
@@ -97,7 +109,7 @@ export function SubsidyForm({ onResults, setLoading, isLoading }: SubsidyFormPro
           </label>
           <Select
             id="companySize"
-            options={companySizeOptions}
+            options={COMPANY_SIZES}
             placeholder="Select your company size"
             error={errors.companySize?.message}
             {...register("companySize")}
@@ -113,7 +125,7 @@ export function SubsidyForm({ onResults, setLoading, isLoading }: SubsidyFormPro
           </label>
           <Select
             id="stage"
-            options={companyStageOptions}
+            options={COMPANY_STAGES}
             placeholder="Select your development stage"
             error={errors.stage?.message}
             {...register("stage")}
